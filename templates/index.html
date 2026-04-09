@@ -1,0 +1,725 @@
+<!DOCTYPE html>
+<html lang="ru" data-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VanGuard Control Panel</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <style>
+        :root[data-theme="light"] {
+            --bg-primary: #f5f7fa;
+            --bg-secondary: #ffffff;
+            --bg-tertiary: #e8ecf1;
+            --text-primary: #0f1419;
+            --text-secondary: #536471;
+            --text-tertiary: #8b98a5;
+            --accent: #5865f2;
+            --accent-hover: #4752c4;
+            --success: #3ba55d;
+            --danger: #ed4245;
+            --warning: #faa81a;
+            --border: #e8ecf1;
+            --shadow: rgba(0, 0, 0, 0.05);
+            --shadow-lg: rgba(0, 0, 0, 0.1);
+        }
+
+        :root[data-theme="dark"] {
+            --bg-primary: #0f1419;
+            --bg-secondary: #1c2128;
+            --bg-tertiary: #2d333b;
+            --text-primary: #e6edf3;
+            --text-secondary: #8b949e;
+            --text-tertiary: #6e7681;
+            --accent: #5865f2;
+            --accent-hover: #4752c4;
+            --success: #3ba55d;
+            --danger: #ed4245;
+            --warning: #faa81a;
+            --border: #373e47;
+            --shadow: rgba(0, 0, 0, 0.3);
+            --shadow-lg: rgba(0, 0, 0, 0.5);
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            line-height: 1.6;
+            transition: background-color 0.3s ease;
+        }
+
+        .header {
+            background: var(--bg-secondary);
+            border-bottom: 1px solid var(--border);
+            padding: 16px 24px;
+            position: sticky;
+            top: 0;
+            z-index: 1000;
+            backdrop-filter: blur(10px);
+        }
+
+        .header-content {
+            max-width: 1600px;
+            margin: 0 auto;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .logo {
+            font-size: 20px;
+            font-weight: 800;
+            color: var(--text-primary);
+            letter-spacing: -0.5px;
+        }
+
+        .header-actions {
+            display: flex;
+            gap: 12px;
+            align-items: center;
+        }
+
+        .theme-toggle {
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border);
+            color: var(--text-primary);
+            padding: 8px 16px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 500;
+            transition: all 0.2s;
+        }
+
+        .theme-toggle:hover {
+            background: var(--bg-primary);
+        }
+
+        .logout-btn {
+            background: var(--danger);
+            color: white;
+            padding: 8px 16px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            text-decoration: none;
+            font-size: 14px;
+            font-weight: 500;
+            transition: all 0.2s;
+        }
+
+        .logout-btn:hover {
+            opacity: 0.9;
+        }
+
+        .container {
+            max-width: 1600px;
+            margin: 0 auto;
+            padding: 24px;
+        }
+
+        .tabs {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 24px;
+            background: var(--bg-secondary);
+            padding: 8px;
+            border-radius: 12px;
+            border: 1px solid var(--border);
+            overflow-x: auto;
+        }
+
+        .tab {
+            padding: 10px 20px;
+            background: transparent;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 600;
+            color: var(--text-secondary);
+            transition: all 0.2s;
+            white-space: nowrap;
+        }
+
+        .tab.active {
+            background: var(--accent);
+            color: white;
+        }
+
+        .tab:hover:not(.active) {
+            background: var(--bg-tertiary);
+            color: var(--text-primary);
+        }
+
+        .content {
+            background: var(--bg-secondary);
+            padding: 24px;
+            border-radius: 12px;
+            border: 1px solid var(--border);
+            min-height: 600px;
+        }
+
+        .tab-content {
+            display: none;
+        }
+
+        .tab-content.active {
+            display: block;
+        }
+
+        .section-title {
+            font-size: 24px;
+            font-weight: 700;
+            margin-bottom: 20px;
+            color: var(--text-primary);
+        }
+
+        .guild-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
+            gap: 16px;
+        }
+
+        .guild-card {
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 20px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .guild-card:hover {
+            border-color: var(--accent);
+            transform: translateY(-2px);
+            box-shadow: 0 8px 16px var(--shadow-lg);
+        }
+
+        .guild-header {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            margin-bottom: 12px;
+        }
+
+        .guild-icon {
+            width: 64px;
+            height: 64px;
+            border-radius: 16px;
+            border: 2px solid var(--border);
+        }
+
+        .guild-info h3 {
+            font-size: 18px;
+            font-weight: 700;
+            color: var(--text-primary);
+            margin-bottom: 4px;
+        }
+
+        .guild-stats {
+            font-size: 13px;
+            color: var(--text-secondary);
+        }
+
+        .guild-selector {
+            margin-bottom: 20px;
+        }
+
+        .guild-selector select {
+            width: 100%;
+            padding: 12px 16px;
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            color: var(--text-primary);
+            font-size: 14px;
+            cursor: pointer;
+        }
+
+        .search-box {
+            width: 100%;
+            padding: 12px 16px;
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            color: var(--text-primary);
+            font-size: 14px;
+            margin-bottom: 20px;
+        }
+
+        .search-box:focus {
+            outline: none;
+            border-color: var(--accent);
+        }
+
+        .member-card {
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 16px;
+            margin-bottom: 12px;
+            transition: all 0.2s;
+        }
+
+        .member-card:hover {
+            border-color: var(--accent);
+        }
+
+        .member-header {
+            display: flex;
+            align-items: flex-start;
+            gap: 16px;
+        }
+
+        .member-avatar {
+            width: 48px;
+            height: 48px;
+            border-radius: 50%;
+            border: 2px solid var(--border);
+        }
+
+        .member-info {
+            flex: 1;
+        }
+
+        .member-name {
+            font-size: 16px;
+            font-weight: 600;
+            color: var(--text-primary);
+            margin-bottom: 4px;
+        }
+
+        .member-id {
+            font-size: 13px;
+            color: var(--text-secondary);
+            margin-bottom: 8px;
+        }
+
+        .roles-container {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+            margin-top: 12px;
+            margin-bottom: 8px;
+        }
+
+        .role-badge {
+            padding: 4px 10px;
+            border-radius: 6px;
+            font-size: 12px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+            background: var(--accent);
+            color: white;
+        }
+
+        .role-badge:hover {
+            opacity: 0.8;
+            transform: scale(1.05);
+        }
+
+        .status-container {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+            margin-top: 12px;
+            margin-bottom: 8px;
+        }
+
+        .status-badge {
+            padding: 4px 10px;
+            border-radius: 6px;
+            font-size: 12px;
+            font-weight: 600;
+            color: white;
+        }
+
+        .status-access { background: var(--accent); }
+        .status-wl { background: var(--success); }
+        .status-bl { background: var(--danger); }
+        .status-prot { background: var(--warning); }
+        .status-ban { background: #9b59b6; }
+
+        .actions-container {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+            margin-top: 12px;
+        }
+
+        .action-btn {
+            padding: 6px 12px;
+            border: none;
+            border-radius: 6px;
+            font-size: 13px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s;
+            color: white;
+        }
+
+        .action-btn:hover {
+            opacity: 0.9;
+            transform: translateY(-1px);
+        }
+
+        .btn-access { background: var(--accent); }
+        .btn-wl { background: var(--success); }
+        .btn-bl { background: var(--danger); }
+        .btn-prot { background: var(--warning); }
+        .btn-ban { background: #9b59b6; }
+        .btn-ban:hover { background: #8e44ad; }
+        .btn-remove { background: #6c757d; }
+
+        .loading, .empty {
+            text-align: center;
+            padding: 60px 20px;
+            color: var(--text-secondary);
+            font-size: 15px;
+        }
+
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.7);
+            z-index: 2000;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .modal.active {
+            display: flex;
+        }
+
+        .modal-content {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            padding: 32px;
+            max-width: 800px;
+            width: 90%;
+            max-height: 80vh;
+            overflow-y: auto;
+        }
+
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 24px;
+        }
+
+        .modal-title {
+            font-size: 24px;
+            font-weight: 700;
+            color: var(--text-primary);
+        }
+
+        .modal-close {
+            background: var(--bg-tertiary);
+            border: none;
+            color: var(--text-primary);
+            padding: 8px 12px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 18px;
+        }
+
+        .modal-close:hover {
+            background: var(--danger);
+            color: white;
+        }
+
+        .info-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 16px;
+            margin-bottom: 24px;
+        }
+
+        .info-card {
+            background: var(--bg-tertiary);
+            padding: 16px;
+            border-radius: 8px;
+            border: 1px solid var(--border);
+        }
+
+        .info-label {
+            font-size: 12px;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            font-weight: 600;
+            margin-bottom: 4px;
+        }
+
+        .info-value {
+            font-size: 20px;
+            font-weight: 700;
+            color: var(--text-primary);
+        }
+
+        .roles-list {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .role-item {
+            background: var(--bg-tertiary);
+            padding: 12px 16px;
+            border-radius: 8px;
+            border: 1px solid var(--border);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .role-item:hover {
+            border-color: var(--accent);
+            transform: translateX(4px);
+        }
+
+        .role-name {
+            font-weight: 600;
+            color: var(--text-primary);
+        }
+
+        .role-id {
+            font-size: 12px;
+            color: var(--text-secondary);
+            font-family: monospace;
+        }
+
+        .copy-notification {
+            position: fixed;
+            bottom: 24px;
+            right: 24px;
+            background: var(--success);
+            color: white;
+            padding: 12px 20px;
+            border-radius: 8px;
+            font-weight: 500;
+            opacity: 0;
+            transition: opacity 0.3s;
+            z-index: 3000;
+        }
+
+        .copy-notification.show {
+            opacity: 1;
+        }
+
+        .autorole-settings-box {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 24px;
+            margin-top: 16px;
+        }
+
+        .autorole-toggle {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 20px;
+        }
+
+        .toggle-switch {
+            position: relative;
+            width: 50px;
+            height: 26px;
+            background: var(--bg-tertiary);
+            border-radius: 13px;
+            cursor: pointer;
+            transition: background 0.3s;
+        }
+
+        .toggle-switch.active {
+            background: var(--success);
+        }
+
+        .toggle-slider {
+            position: absolute;
+            top: 3px;
+            left: 3px;
+            width: 20px;
+            height: 20px;
+            background: white;
+            border-radius: 50%;
+            transition: transform 0.3s;
+        }
+
+        .toggle-switch.active .toggle-slider {
+            transform: translateX(24px);
+        }
+
+        .autorole-role-selector {
+            margin-top: 16px;
+        }
+
+        .autorole-role-selector label {
+            display: block;
+            font-size: 14px;
+            font-weight: 600;
+            color: var(--text-primary);
+            margin-bottom: 8px;
+        }
+
+        .autorole-role-selector select {
+            width: 100%;
+            padding: 10px 14px;
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            color: var(--text-primary);
+            font-size: 14px;
+            cursor: pointer;
+        }
+
+        .autorole-save-btn {
+            margin-top: 20px;
+            padding: 10px 24px;
+            background: var(--accent);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .autorole-save-btn:hover {
+            background: var(--accent-hover);
+            transform: translateY(-1px);
+        }
+
+        .autorole-info {
+            margin-top: 16px;
+            padding: 12px;
+            background: var(--bg-tertiary);
+            border-radius: 8px;
+            font-size: 13px;
+            color: var(--text-secondary);
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <div class="header-content">
+            <div class="logo">VANGUARD PANEL</div>
+            <div class="header-actions">
+                <button class="theme-toggle" onclick="toggleTheme()" id="theme-btn">Light Mode</button>
+                <a href="/logout" class="logout-btn">Logout</a>
+            </div>
+        </div>
+    </div>
+
+    <div class="container">
+        <div class="tabs">
+            <button class="tab active" onclick="showTab('guilds')">Серверы</button>
+            <button class="tab" onclick="showTab('manage')">Управление</button>
+            <button class="tab" onclick="showTab('autorole')">Автороль</button>
+            <button class="tab" onclick="showTab('whitelist')">Вайтлист</button>
+            <button class="tab" onclick="showTab('blacklist')">Черный список</button>
+            <button class="tab" onclick="showTab('protected')">Защищенные</button>
+            <button class="tab" onclick="showTab('bans')">Баны</button>
+        </div>
+
+        <div class="content">
+            <div id="guilds-content" class="tab-content active">
+                <h2 class="section-title">Серверы</h2>
+                <div id="guilds-list" class="loading">Загрузка серверов...</div>
+            </div>
+
+            <div id="manage-content" class="tab-content">
+                <h2 class="section-title">Управление участниками</h2>
+                <div class="guild-selector">
+                    <select id="manage-guild" onchange="loadMembers()">
+                        <option value="">Выберите сервер...</option>
+                    </select>
+                </div>
+                <input type="text" id="member-search" class="search-box" placeholder="Поиск по нику..." oninput="filterMembers()">
+                <div id="manage-list" class="empty">Выберите сервер</div>
+            </div>
+
+            <div id="autorole-content" class="tab-content">
+                <h2 class="section-title">Настройки Автороли</h2>
+                <div class="guild-selector">
+                    <select id="autorole-guild" onchange="loadAutoRole()">
+                        <option value="">Выберите сервер...</option>
+                    </select>
+                </div>
+                <div id="autorole-settings" class="empty">Выберите сервер</div>
+            </div>
+
+            <div id="whitelist-content" class="tab-content">
+                <h2 class="section-title">Вайтлист</h2>
+                <div class="guild-selector">
+                    <select id="whitelist-guild" onchange="loadWhitelist()">
+                        <option value="">Выберите сервер...</option>
+                    </select>
+                </div>
+                <div id="whitelist-list" class="empty">Выберите сервер</div>
+            </div>
+
+            <div id="blacklist-content" class="tab-content">
+                <h2 class="section-title">Черный список</h2>
+                <div class="guild-selector">
+                    <select id="blacklist-guild" onchange="loadBlacklist()">
+                        <option value="">Выберите сервер...</option>
+                    </select>
+                </div>
+                <div id="blacklist-list" class="empty">Выберите сервер</div>
+            </div>
+
+            <div id="protected-content" class="tab-content">
+                <h2 class="section-title">Защищенные пользователи</h2>
+                <div class="guild-selector">
+                    <select id="protected-guild" onchange="loadProtected()">
+                        <option value="">Выберите сервер...</option>
+                    </select>
+                </div>
+                <div id="protected-list" class="empty">Выберите сервер</div>
+            </div>
+
+            <div id="bans-content" class="tab-content">
+                <h2 class="section-title">Временные баны</h2>
+                <div class="guild-selector">
+                    <select id="bans-guild" onchange="loadBans()">
+                        <option value="">Выберите сервер...</option>
+                    </select>
+                </div>
+                <div id="bans-list" class="empty">Выберите сервер</div>
+            </div>
+        </div>
+    </div>
+
+    <div id="guild-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 class="modal-title" id="modal-guild-name">Server Details</h2>
+                <button class="modal-close" onclick="closeGuildModal()">×</button>
+            </div>
+            <div id="modal-guild-details"></div>
+        </div>
+    </div>
+
+    <div class="copy-notification" id="copy-notification">Скопировано в буфер обмена!</div>
+
+    <script src="/static/js/app.js"></script>
+</body>
+</html>
