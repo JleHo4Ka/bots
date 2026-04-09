@@ -1601,4 +1601,9 @@ print("🌐 Веб-сервер запущен на http://0.0.0.0:5000")
 # ==========================================
 # --- ЗАПУСК БОТА ---
 # ==========================================
-bot.run("MTQ3OTgxNDc4NTE3NTY1MDMyNQ.GfQ9hx.MS_iTvVC4o1xrrRUWTVQwGSEBlZGTnuaOoFDhI")
+DISCORD_TOKEN = os.getenv("DISCORD_TOKEN")
+if not DISCORD_TOKEN:
+    print("ОШИБКА: Токен Discord не найден! Установите переменную окружения DISCORD_TOKEN")
+    exit(1)
+
+bot.run(DISCORD_TOKEN)
