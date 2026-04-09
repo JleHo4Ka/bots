@@ -1590,7 +1590,8 @@ def api_set_autorole(guild_id):
         return jsonify({'success': False, 'error': str(e)}), 500
 
 def run_flask():
-    app.run(host='0.0.0.0', port=5000, debug=False, use_reloader=False)
+    port = int(os.getenv("PORT", 5000))
+    app.run(host='0.0.0.0', port=port, debug=False, use_reloader=False)
 
 # Запуск Flask в отдельном потоке
 flask_thread = threading.Thread(target=run_flask, daemon=True)
