@@ -615,6 +615,37 @@
             font-size: 13px;
             color: var(--text-secondary);
         }
+
+        .notification {
+            position: fixed;
+            top: 80px;
+            right: 24px;
+            padding: 16px 24px;
+            border-radius: 8px;
+            font-weight: 500;
+            font-size: 14px;
+            opacity: 0;
+            transform: translateX(400px);
+            transition: all 0.3s ease;
+            z-index: 3000;
+            max-width: 400px;
+            box-shadow: 0 4px 12px var(--shadow-lg);
+        }
+
+        .notification.show {
+            opacity: 1;
+            transform: translateX(0);
+        }
+
+        .notification.success {
+            background: var(--success);
+            color: white;
+        }
+
+        .notification.error {
+            background: var(--danger);
+            color: white;
+        }
     </style>
 </head>
 <body>

@@ -266,15 +266,77 @@ async function performAction(action, guildId, userId, level) {
         const result = await response.json();
         
         if (result.success) {
-            alert(result.message);
-            loadMembers();
+            showNotification(result.message, "success");
+            // Обновляем только конкретного участника без перезагрузки всего списка
+            await updateMember(guildId, userId);
         } else {
-            alert("Error: " + result.error);
+            showNotification("Ошибка: " + result.error, "error");
         }
     } catch (error) {
-        alert("Error performing action");
+        showNotification("Ошибка выполнения действия", "error");
         console.error("Error:", error);
     }
+}
+
+async function updateMember(guildId, userId) {
+    try {
+        // Получаем обновленные данные участника
+        const response = await fetch("/api/members/" + guildId);
+        const members = await response.json();
+        const updatedMember = members.find(m => m.user_id === userId);
+        
+        if (!updatedMember) return;
+        
+        // Находим карточку участника в DOM
+        const container = document.getElementById("manage-list");
+        const cards = container.querySelectorAll(".member-card");
+        
+        // Ищем карточку по user_id
+        for (let card of cards) {
+            const memberIdElement = card.querySelector(".member-id");
+            if (memberIdElement && memberIdElement.textContent.includes(userId)) {
+                // Создаем новую карточку
+                const newCard = createMemberCard(updatedMember);
+                // Заменяем старую карточку на новую
+                card.replaceWith(newCard);
+                
+                // Подсвечиваем обновленную карточку
+                newCard.style.transition = "background 0.3s";
+                newCard.style.background = "var(--accent)";
+                newCard.style.opacity = "0.3";
+                setTimeout(() => {
+                    newCard.style.background = "";
+                    newCard.style.opacity = "";
+                }, 500);
+                
+                break;
+            }
+        }
+        
+        // Обновляем массив allMembers
+        const index = allMembers.findIndex(m => m.user_id === userId);
+        if (index !== -1) {
+            allMembers[index] = updatedMember;
+        }
+    } catch (error) {
+        console.error("Error updating member:", error);
+    }
+}
+
+function showNotification(message, type) {
+    const notification = document.createElement("div");
+    notification.className = "notification " + type;
+    notification.textContent = message;
+    document.body.appendChild(notification);
+    
+    setTimeout(() => {
+        notification.classList.add("show");
+    }, 10);
+    
+    setTimeout(() => {
+        notification.classList.remove("show");
+        setTimeout(() => notification.remove(), 300);
+    }, 3000);
 }
 
 function banUser(guildId, userId, banType) {
@@ -298,14 +360,14 @@ function banUser(guildId, userId, banType) {
     .then(response => response.json())
     .then(result => {
         if (result.success) {
-            alert(result.message);
-            loadMembers();
+            showNotification(result.message, "success");
+            updateMember(guildId, userId);
         } else {
-            alert("Error: " + result.error);
+            showNotification("Ошибка: " + result.error, "error");
         }
     })
     .catch(error => {
-        alert("Error banning user");
+        showNotification("Ошибка выдачи бана", "error");
         console.error("Error:", error);
     });
 }

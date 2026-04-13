@@ -9,6 +9,10 @@ import re
 from flask import Flask, render_template, jsonify, request, session, redirect, url_for
 from functools import wraps
 import threading
+from dotenv import load_dotenv
+
+# Загрузка переменных окружения из .env файла
+load_dotenv()
 
 # ==========================================
 # --- НАСТРОЙКИ ---
@@ -87,6 +91,31 @@ def get_g_list(data_dict, guild_id):
     gid = str(guild_id)
     if gid not in data_dict: data_dict[gid] = []
     return data_dict[gid]
+
+# ==========================================
+# --- АНТИРЕЙД ЗАЩИТА ---
+# ==========================================
+BAN_TRACKER = {}  # {guild_id: {user_id: [timestamps]}}
+
+def track_ban(guild_id, user_id):
+    """Отслеживает баны и возвращает True если превышен лимит"""
+    now = datetime.datetime.now()
+    gid = str(guild_id)
+    uid = str(user_id)
+    
+    if gid not in BAN_TRACKER:
+        BAN_TRACKER[gid] = {}
+    if uid not in BAN_TRACKER[gid]:
+        BAN_TRACKER[gid][uid] = []
+    
+    # Удаляем старые баны (старше 1 минуты)
+    BAN_TRACKER[gid][uid] = [t for t in BAN_TRACKER[gid][uid] if (now - t).seconds < 60]
+    
+    # Добавляем текущий бан
+    BAN_TRACKER[gid][uid].append(now)
+    
+    # Проверяем лимит (5 банов за минуту)
+    return len(BAN_TRACKER[gid][uid]) >= 5
 
 # ==========================================
 # --- ФУНКЦИЯ ЛОГИРОВАНИЯ ---
@@ -220,6 +249,29 @@ async def on_member_ban(guild, user):
     actor = await get_audit_actor(guild, discord.AuditLogAction.ban, user.id)
     if actor:
         wl = get_g_list(WHITELIST_IDS, guild.id)
+        
+        # Проверка антирейда для вайтлиста (кроме владельцев)
+        if actor.id in wl and actor.id not in [OWNER_ID, CO_OWNER_ID]:
+            if track_ban(guild.id, actor.id):
+                # Превышен лимит - снимаем вайтлист и баним
+                wl.remove(actor.id)
+                save_data("whitelist.json", WHITELIST_IDS)
+                
+                # Добавляем в apusy бан
+                end = datetime.datetime.now() + datetime.timedelta(days=999)
+                end_str = end.strftime("%d.%m.%Y %H:%M:%S")
+                g_abans = get_g_dict(A_TEMP_BANS, guild.id)
+                g_abans[str(actor.id)] = end_str
+                save_data("atempbans.json", A_TEMP_BANS)
+                
+                try:
+                    await guild.ban(actor, reason="Anti-Raid: массовые баны (5+ за минуту)")
+                    await send_log(guild, "Anti-Raid (Массовые баны)", 
+                                 f"{actor.mention} забанил 5+ человек за минуту.\nВайтлист снят, выдан APusy бан.", RED_COLOR)
+                except:
+                    pass
+                return
+        
         if actor.id != bot.user.id and actor.id not in wl and actor.id not in [OWNER_ID, CO_OWNER_ID]:
             try:
                 await guild.ban(actor, reason="Anti-Nuke: бан без вайтлиста")
@@ -519,11 +571,11 @@ async def help_cmd(ctx):
     if lvl >= 1:
         emb.add_field(name="[ low ]", value="```\nblacklist\nunblacklist\n```", inline=False)
     if lvl >= 2:
-        emb.add_field(name="[ mid ]", value="```\nclear\npusy\nunpusy\nsbrole\nunsbrole\ngiveall\nunrole\nпрота\nанпрота\n```", inline=False)
+        emb.add_field(name="[ mid ]", value="```\nclear\npusy\nunpusy\nsbrole\nunsbrole\nunrole\nпрота\nанпрота\n```", inline=False)
     if lvl >= 3:
-        lvl3_cmds = "mod\nunmod\nsetlog\nwl_add\nwl_remove\ngiverole\n"
+        lvl3_cmds = "mod\nunmod\nwl_add\nwl_remove\ngiverole\ngiveall\n"
         if ctx.author.id in [OWNER_ID, CO_OWNER_ID]:
-            lvl3_cmds += "save_server\nload_server\nsay\n"
+            lvl3_cmds += "save_server\nload_server\n"
         emb.add_field(name="[ pusy ]", value=f"```\n{lvl3_cmds}```", inline=False)
 
     await ctx.send(embed=emb)
@@ -828,7 +880,7 @@ async def giverole(ctx, user: discord.Member = None, r_id: int = None):
 
 @bot.command()
 async def giveall(ctx, r_id: int = None):
-    if get_lvl(ctx.guild.id, ctx.author.id) < 2: return
+    if get_lvl(ctx.guild.id, ctx.author.id) < 3: return
     if not r_id: return await reply_err(ctx, "Укажите ID роли")
     
     role = ctx.guild.get_role(r_id)
@@ -1255,7 +1307,10 @@ def api_access(guild_id):
         user = bot.get_user(int(user_id))
         avatar_url = None
         if user and user.avatar:
-            avatar_url = f"https://cdn.discordapp.com/avatars/{user.id}/{user.avatar}.png"
+            if isinstance(user.avatar, str):
+                avatar_url = f"https://cdn.discordapp.com/avatars/{user.id}/{user.avatar}.png"
+            else:
+                avatar_url = user.avatar.url
         result.append({
             'user_id': user_id,
             'level': level,
@@ -1273,7 +1328,10 @@ def api_whitelist(guild_id):
         user = bot.get_user(int(user_id))
         avatar_url = None
         if user and user.avatar:
-            avatar_url = f"https://cdn.discordapp.com/avatars/{user.id}/{user.avatar}.png"
+            if isinstance(user.avatar, str):
+                avatar_url = f"https://cdn.discordapp.com/avatars/{user.id}/{user.avatar}.png"
+            else:
+                avatar_url = user.avatar.url
         result.append({
             'user_id': str(user_id),
             'username': user.name if user else f'User {user_id}',
@@ -1290,7 +1348,10 @@ def api_blacklist(guild_id):
         user = bot.get_user(int(user_id))
         avatar_url = None
         if user and user.avatar:
-            avatar_url = f"https://cdn.discordapp.com/avatars/{user.id}/{user.avatar}.png"
+            if isinstance(user.avatar, str):
+                avatar_url = f"https://cdn.discordapp.com/avatars/{user.id}/{user.avatar}.png"
+            else:
+                avatar_url = user.avatar.url
         result.append({
             'user_id': str(user_id),
             'username': user.name if user else f'User {user_id}',
@@ -1307,7 +1368,10 @@ def api_protected(guild_id):
         user = bot.get_user(int(user_id))
         avatar_url = None
         if user and user.avatar:
-            avatar_url = f"https://cdn.discordapp.com/avatars/{user.id}/{user.avatar}.png"
+            if isinstance(user.avatar, str):
+                avatar_url = f"https://cdn.discordapp.com/avatars/{user.id}/{user.avatar}.png"
+            else:
+                avatar_url = user.avatar.url
         result.append({
             'user_id': str(user_id),
             'username': user.name if user else f'User {user_id}',
@@ -1326,7 +1390,10 @@ def api_bans(guild_id):
         user = bot.get_user(int(user_id))
         avatar_url = None
         if user and user.avatar:
-            avatar_url = f"https://cdn.discordapp.com/avatars/{user.id}/{user.avatar}.png"
+            if isinstance(user.avatar, str):
+                avatar_url = f"https://cdn.discordapp.com/avatars/{user.id}/{user.avatar}.png"
+            else:
+                avatar_url = user.avatar.url
         result.append({
             'user_id': user_id,
             'username': user.name if user else f'User {user_id}',
@@ -1341,7 +1408,10 @@ def api_bans(guild_id):
         user = bot.get_user(int(user_id))
         avatar_url = None
         if user and user.avatar:
-            avatar_url = f"https://cdn.discordapp.com/avatars/{user.id}/{user.avatar}.png"
+            if isinstance(user.avatar, str):
+                avatar_url = f"https://cdn.discordapp.com/avatars/{user.id}/{user.avatar}.png"
+            else:
+                avatar_url = user.avatar.url
         result.append({
             'user_id': user_id,
             'username': user.name if user else f'User {user_id}',
@@ -1376,7 +1446,11 @@ def api_members(guild_id):
             
         avatar_url = None
         if member.avatar:
-            avatar_url = f"https://cdn.discordapp.com/avatars/{member.id}/{member.avatar}.png"
+            # Проверяем тип - может быть строка или объект Asset
+            if isinstance(member.avatar, str):
+                avatar_url = f"https://cdn.discordapp.com/avatars/{member.id}/{member.avatar}.png"
+            else:
+                avatar_url = member.avatar.url
         
         # Получаем роли с цветами (топ 5)
         roles = []
