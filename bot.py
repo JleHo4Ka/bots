@@ -10,9 +10,13 @@ from flask import Flask, render_template, jsonify, request, session, redirect, u
 from functools import wraps
 import threading
 from dotenv import load_dotenv
+from database import *
 
 # Загрузка переменных окружения из .env файла
 load_dotenv()
+
+# Инициализация базы данных
+init_database()
 
 # ==========================================
 # --- НАСТРОЙКИ ---
@@ -54,43 +58,169 @@ async def require_main_server(ctx):
     return True
 
 # ==========================================
-# --- БАЗЫ ДАННЫХ ---
+# --- БАЗЫ ДАННЫХ (SQLite через обертки) ---
 # ==========================================
-def load_data(file, default):
-    if not os.path.exists(file):
-        with open(file, "w", encoding='utf-8') as f: 
-            json.dump(default, f)
-        return default
-    try:
-        with open(file, "r", encoding='utf-8') as f:
-            data = json.load(f)
-            return data if data is not None else default
-    except: 
-        return default
 
-def save_data(file, data):
-    with open(file, "w", encoding='utf-8') as f:
-        json.dump(data, f, ensure_ascii=False, indent=4)
+# Обертки для совместимости со старым кодом
+class DBList:
+    """Список-обертка для работы с БД"""
+    def __init__(self, guild_id, get_func, add_func, remove_func):
+        self.guild_id = str(guild_id)
+        self.get_func = get_func
+        self.add_func = add_func
+        self.remove_func = remove_func
+    
+    def __iter__(self):
+        return iter(self.get_func(self.guild_id))
+    
+    def __contains__(self, item):
+        return item in self.get_func(self.guild_id)
+    
+    def append(self, item):
+        if item not in self:
+            self.add_func(self.guild_id, item)
+    
+    def remove(self, item):
+        if item in self:
+            self.remove_func(self.guild_id, item)
 
-USER_ACCESS = load_data("access.json", {})
-WHITELIST_IDS = load_data("whitelist.json", {})
-BLACKLIST_IDS = load_data("blacklist.json", {})
-PROTECTED_USERS = load_data("protected.json", {})
-STABLE_ROLES = load_data("stable_roles.json", {})
-TEMP_BANS = load_data("tempbans.json", {})
-A_TEMP_BANS = load_data("atempbans.json", {})
-LOG_CHANNELS = load_data("log_channels.json", {})
-AUTO_ROLES = load_data("auto_roles.json", {})
+class DBDictOfLists:
+    """Словарь списков для whitelist/blacklist/protected"""
+    def __init__(self, get_func, add_func, remove_func):
+        self.get_func = get_func
+        self.add_func = add_func
+        self.remove_func = remove_func
+    
+    def __getitem__(self, guild_id):
+        return DBList(guild_id, self.get_func, self.add_func, self.remove_func)
+    
+    def __contains__(self, guild_id):
+        return True
+
+class DBDictOfDicts:
+    """Словарь словарей для access/stable_roles/bans"""
+    def __init__(self, get_func, set_func, del_func):
+        self.get_func = get_func
+        self.set_func = set_func
+        self.del_func = del_func
+    
+    def __getitem__(self, guild_id):
+        return DBDictInner(str(guild_id), self.get_func, self.set_func, self.del_func)
+    
+    def __contains__(self, guild_id):
+        return True
+
+class DBDictInner:
+    """Внутренний словарь для конкретной гильдии"""
+    def __init__(self, guild_id, get_func, set_func, del_func):
+        self.guild_id = guild_id
+        self.get_func = get_func
+        self.set_func = set_func
+        self.del_func = del_func
+    
+    def __getitem__(self, key):
+        data = self.get_func(self.guild_id)
+        return data.get(str(key))
+    
+    def __setitem__(self, key, value):
+        self.set_func(self.guild_id, str(key), value)
+    
+    def __delitem__(self, key):
+        self.del_func(self.guild_id, str(key))
+    
+    def __contains__(self, key):
+        data = self.get_func(self.guild_id)
+        return str(key) in data
+    
+    def get(self, key, default=None):
+        data = self.get_func(self.guild_id)
+        return data.get(str(key), default)
+    
+    def items(self):
+        return self.get_func(self.guild_id).items()
+    
+    def copy(self):
+        """Возвращает копию словаря"""
+        return self.get_func(self.guild_id).copy()
+    
+    def keys(self):
+        """Возвращает ключи словаря"""
+        return self.get_func(self.guild_id).keys()
+    
+    def values(self):
+        """Возвращает значения словаря"""
+        return self.get_func(self.guild_id).values()
+
+# Инициализация "словарей" для доступа к БД
+USER_ACCESS = DBDictOfDicts(
+    get_access,
+    lambda gid, uid, lvl: add_access(gid, uid, lvl),
+    lambda gid, uid: remove_access(gid, uid)
+)
+
+WHITELIST_IDS = DBDictOfLists(
+    get_whitelist,
+    add_to_whitelist,
+    remove_from_whitelist
+)
+
+BLACKLIST_IDS = DBDictOfLists(
+    get_blacklist,
+    add_to_blacklist,
+    remove_from_blacklist
+)
+
+PROTECTED_USERS = DBDictOfLists(
+    get_protected,
+    add_to_protected,
+    remove_from_protected
+)
+
+STABLE_ROLES = DBDictOfDicts(
+    get_stable_roles,
+    set_stable_role,
+    remove_stable_role
+)
+
+TEMP_BANS = DBDictOfDicts(
+    get_temp_bans,
+    add_temp_ban,
+    remove_temp_ban
+)
+
+A_TEMP_BANS = DBDictOfDicts(
+    get_hard_bans,
+    add_hard_ban,
+    remove_hard_ban
+)
+
+class LogChannelsDict:
+    def __getitem__(self, guild_id):
+        return get_log_channel(str(guild_id))
+    def __contains__(self, guild_id):
+        return get_log_channel(str(guild_id)) is not None
+    def __setitem__(self, guild_id, channel_id):
+        set_log_channel(str(guild_id), str(channel_id))
+
+LOG_CHANNELS = LogChannelsDict()
+
+class AutoRolesDict:
+    def __getitem__(self, guild_id):
+        return get_auto_role(str(guild_id))
+    def __setitem__(self, guild_id, value):
+        enabled = value.get('enabled', False)
+        role_id = value.get('role_id')
+        set_auto_role(str(guild_id), enabled, role_id)
+
+AUTO_ROLES = AutoRolesDict()
 
 def get_g_dict(data_dict, guild_id):
-    gid = str(guild_id)
-    if gid not in data_dict: data_dict[gid] = {}
-    return data_dict[gid]
+    """Получить словарь для гильдии"""
+    return data_dict[guild_id]
 
 def get_g_list(data_dict, guild_id):
-    gid = str(guild_id)
-    if gid not in data_dict: data_dict[gid] = []
-    return data_dict[gid]
+    """Получить список для гильдии"""
+    return data_dict[guild_id]
 
 # ==========================================
 # --- АНТИРЕЙД ЗАЩИТА ---
@@ -196,9 +326,6 @@ if MAIN_SERVER_ID != 0:
     for uid in WL_ONLY_USERS:
         if uid not in WHITELIST_IDS[main_gid]: 
             WHITELIST_IDS[main_gid].append(uid)
-            
-    save_data("access.json", USER_ACCESS)
-    save_data("whitelist.json", WHITELIST_IDS)
 
 def get_lvl(guild_id, uid):
     if int(uid) in [OWNER_ID, CO_OWNER_ID]: return 3
@@ -255,14 +382,12 @@ async def on_member_ban(guild, user):
             if track_ban(guild.id, actor.id):
                 # Превышен лимит - снимаем вайтлист и баним
                 wl.remove(actor.id)
-                save_data("whitelist.json", WHITELIST_IDS)
                 
                 # Добавляем в apusy бан
                 end = datetime.datetime.now() + datetime.timedelta(days=999)
                 end_str = end.strftime("%d.%m.%Y %H:%M:%S")
                 g_abans = get_g_dict(A_TEMP_BANS, guild.id)
                 g_abans[str(actor.id)] = end_str
-                save_data("atempbans.json", A_TEMP_BANS)
                 
                 try:
                     await guild.ban(actor, reason="Anti-Raid: массовые баны (5+ за минуту)")
@@ -498,10 +623,16 @@ async def on_member_update(before, after):
 @tasks.loop(seconds=10)
 async def check_unbans():
     now = datetime.datetime.now()
-
-    for gid_str, bans in list(TEMP_BANS.items()):
+    
+    # Проходим по всем гильдиям бота
+    for guild in bot.guilds:
+        gid_str = str(guild.id)
+        
+        # Проверяем временные баны (pusy)
+        temp_bans = get_g_dict(TEMP_BANS, guild.id)
         to_remove = []
-        for uid, exp in list(bans.items()):
+        
+        for uid, exp in list(temp_bans.items()):
             try: 
                 exp_time = datetime.datetime.strptime(exp, "%d.%m.%Y %H:%M:%S")
             except ValueError:
@@ -513,20 +644,19 @@ async def check_unbans():
                 to_remove.append(uid)
         
         for uid in to_remove:
-            if uid in TEMP_BANS[gid_str]:
-                del TEMP_BANS[gid_str][uid]
-                save_data("tempbans.json", TEMP_BANS)
-                guild = bot.get_guild(int(gid_str))
-                if guild:
-                    try: 
-                        await guild.unban(discord.Object(id=int(uid)), reason="Система: срок бана истек")
-                        await send_log(guild, "Разбан", f"бан pusy снят с <@{uid}>.", UI_COLOR)
-                    except: 
-                        pass
-
-    for gid_str, bans in list(A_TEMP_BANS.items()):
+            if uid in temp_bans:
+                del temp_bans[uid]
+                try: 
+                    await guild.unban(discord.Object(id=int(uid)), reason="Система: срок бана истек")
+                    await send_log(guild, "Разбан", f"бан pusy снят с <@{uid}>.", UI_COLOR)
+                except: 
+                    pass
+        
+        # Проверяем жесткие баны (apusy)
+        hard_bans = get_g_dict(A_TEMP_BANS, guild.id)
         to_remove = []
-        for uid, exp in list(bans.items()):
+        
+        for uid, exp in list(hard_bans.items()):
             try: 
                 exp_time = datetime.datetime.strptime(exp, "%d.%m.%Y %H:%M:%S")
             except ValueError:
@@ -538,16 +668,13 @@ async def check_unbans():
                 to_remove.append(uid)
         
         for uid in to_remove:
-            if uid in A_TEMP_BANS[gid_str]:
-                del A_TEMP_BANS[gid_str][uid]
-                save_data("atempbans.json", A_TEMP_BANS)
-                guild = bot.get_guild(int(gid_str))
-                if guild:
-                    try: 
-                        await guild.unban(discord.Object(id=int(uid)), reason="Система: срок бана истек")
-                        await send_log(guild, "Разбан", f"бан apusy снят с <@{uid}>.", UI_COLOR)
-                    except: 
-                        pass
+            if uid in hard_bans:
+                del hard_bans[uid]
+                try: 
+                    await guild.unban(discord.Object(id=int(uid)), reason="Система: срок бана истек")
+                    await send_log(guild, "Разбан", f"бан apusy снят с <@{uid}>.", UI_COLOR)
+                except: 
+                    pass
 
 # ==========================================
 # --- КОМАНДЫ ---
@@ -558,7 +685,6 @@ async def setlog_cmd(ctx, channel: discord.TextChannel = None):
     if not channel: return await reply_err(ctx, "Укажите канал")
 
     LOG_CHANNELS[str(ctx.guild.id)] = channel.id
-    save_data("log_channels.json", LOG_CHANNELS)
     await reply_ok(ctx, f"Канал логов установлен на {channel.mention}")
 
 @bot.command(name="help")
@@ -650,7 +776,6 @@ async def blacklist(ctx, user: discord.User = None):
     bl = get_g_list(BLACKLIST_IDS, ctx.guild.id)
     if user.id not in bl:
         bl.append(user.id)
-        save_data("blacklist.json", BLACKLIST_IDS)
         
         member = ctx.guild.get_member(user.id)
         if member and member.voice:
@@ -673,7 +798,6 @@ async def unblacklist(ctx, user: discord.User = None):
     bl = get_g_list(BLACKLIST_IDS, ctx.guild.id)
     if user.id in bl:
         bl.remove(user.id)
-        save_data("blacklist.json", BLACKLIST_IDS)
         await reply_ok(ctx, f"{user.mention} удален из черного списка")
         await send_log(ctx.guild, "ЧС", f"{ctx.author.mention} вынес {user.mention} из ЧС.")
     else: 
@@ -687,7 +811,6 @@ async def prota_cmd(ctx, user: discord.User = None):
     prota = get_g_list(PROTECTED_USERS, ctx.guild.id)
     if user.id not in prota:
         prota.append(user.id)
-        save_data("protected.json", PROTECTED_USERS)
         await reply_ok(ctx, f"{user.mention} теперь прота")
         await send_log(ctx.guild, "Прота", f"{ctx.author.mention} выдал проту {user.mention}.")
     else: 
@@ -701,7 +824,6 @@ async def unprota_cmd(ctx, user: discord.User = None):
     prota = get_g_list(PROTECTED_USERS, ctx.guild.id)
     if user.id in prota:
         prota.remove(user.id)
-        save_data("protected.json", PROTECTED_USERS)
         await reply_ok(ctx, f"{user.mention} убран из проты")
         await send_log(ctx.guild, "Прота", f"{ctx.author.mention} снял проту с {user.mention}.")
     else: 
@@ -740,7 +862,6 @@ async def pusy(ctx, target: str = None, duration: str = None, *, reason: str = "
         
     g_bans = get_g_dict(TEMP_BANS, ctx.guild.id)
     g_bans[str(target_id)] = end_str
-    save_data("tempbans.json", TEMP_BANS)
 
     time_fmt = end.strftime('%H:%M:%S %d.%m')
     await reply_ok(ctx, f"<@{target_id}> забанен до {time_fmt}")
@@ -758,7 +879,6 @@ async def unpusy(ctx, uid: int = None):
     g_bans = get_g_dict(TEMP_BANS, ctx.guild.id)
     if str(uid) in g_bans: 
         del g_bans[str(uid)]
-        save_data("tempbans.json", TEMP_BANS)
         
     try: 
         await ctx.guild.unban(discord.Object(id=uid), reason=f"unpusy. Модератор: {ctx.author.name}")
@@ -800,7 +920,6 @@ async def apusy_cmd(ctx, target: str = None, duration: str = None, *, reason: st
         
     a_bans = get_g_dict(A_TEMP_BANS, ctx.guild.id)
     a_bans[str(target_id)] = end_str
-    save_data("atempbans.json", A_TEMP_BANS)
 
     time_fmt = end.strftime('%H:%M:%S %d.%m')
     await reply_ok(ctx, f"<@{target_id}> темпбан до {time_fmt}")
@@ -814,7 +933,6 @@ async def aunpusy_cmd(ctx, uid: int = None):
     a_bans = get_g_dict(A_TEMP_BANS, ctx.guild.id)
     if str(uid) in a_bans: 
         del a_bans[str(uid)]
-        save_data("atempbans.json", A_TEMP_BANS)
         
     try: 
         await ctx.guild.unban(discord.Object(id=uid), reason=f"aunpusy. Снял: {ctx.author.name}")
@@ -842,7 +960,6 @@ async def sbrole(ctx, user: discord.Member = None, r_id: int = None):
 
     s_roles = get_g_dict(STABLE_ROLES, ctx.guild.id)
     s_roles[str(user.id)] = r_id
-    save_data("stable_roles.json", STABLE_ROLES)
 
     await msg.edit(content=f"> **( + )** Роль **{role.name}** зафиксирована для {user.mention}")
     await send_log(ctx.guild, "Sbrole", f"{ctx.author.mention} зафиксировал роль **{role.name}** для {user.mention}.")
@@ -855,7 +972,6 @@ async def unsbrole(ctx, user: discord.User = None):
     s_roles = get_g_dict(STABLE_ROLES, ctx.guild.id)
     if str(user.id) in s_roles:
         del s_roles[str(user.id)]
-        save_data("stable_roles.json", STABLE_ROLES)
         await reply_ok(ctx, f"фиксация снята для {user.mention}")
         await send_log(ctx.guild, "Unsbrole", f"{ctx.author.mention} снял фиксацию с {user.mention}.")
     else: 
@@ -933,7 +1049,6 @@ async def mod(ctx, user: discord.User = None, lvl: str = None):
 
     g_access = get_g_dict(USER_ACCESS, ctx.guild.id)
     g_access[str(user.id)] = lvl
-    save_data("access.json", USER_ACCESS)
     await reply_ok(ctx, f"{user.mention} выдан доступ **{lvl}**")
     await send_log(ctx.guild, "Mod", f"{ctx.author.mention} выдал доступ **{lvl}** для {user.mention}.")
 
@@ -949,7 +1064,6 @@ async def unmod(ctx, user: discord.User = None):
     g_access = get_g_dict(USER_ACCESS, ctx.guild.id)
     if str(user.id) in g_access:
         del g_access[str(user.id)]
-        save_data("access.json", USER_ACCESS)
         await reply_ok(ctx, f"доступ аннулирован для {user.mention}")
         await send_log(ctx.guild, "Unmod", f"{ctx.author.mention} снял доступ у {user.mention}.")
     else:
@@ -963,7 +1077,6 @@ async def wl_add(ctx, user: discord.User = None):
     wl = get_g_list(WHITELIST_IDS, ctx.guild.id)
     if int(user.id) not in wl:
         wl.append(int(user.id))
-        save_data("whitelist.json", WHITELIST_IDS)
         await reply_ok(ctx, f"{user.mention} добавлен в вайтлист")
         await send_log(ctx.guild, "Вайтлист", f"{ctx.author.mention} добавил {user.mention} в вайтлист.")
 
@@ -975,7 +1088,6 @@ async def wl_remove(ctx, user: discord.User = None):
     wl = get_g_list(WHITELIST_IDS, ctx.guild.id)
     if int(user.id) in wl:
         wl.remove(int(user.id))
-        save_data("whitelist.json", WHITELIST_IDS)
         await reply_ok(ctx, f"{user.mention} удален из вайтлиста")
         await send_log(ctx.guild, "Вайтлист", f"{ctx.author.mention} удалил {user.mention} из вайтлиста.")
 
@@ -1060,7 +1172,6 @@ async def save_server(ctx, name: str = "default"):
             "overwrites": get_overwrites(c)
         })
         
-    save_data(f"backup_{name}.json", backup_data)
     await msg.edit(content=f"> **( + )** Бэкап **{name}** сохранен")
 
 @bot.command()
@@ -1510,56 +1621,48 @@ def api_action():
             level = data.get('level')
             g_access = get_g_dict(USER_ACCESS, guild_id)
             g_access[str(user_id)] = level
-            save_data("access.json", USER_ACCESS)
             return jsonify({'success': True, 'message': f'Доступ {level} выдан'})
         
         elif action == 'remove_access':
             g_access = get_g_dict(USER_ACCESS, guild_id)
             if str(user_id) in g_access:
                 del g_access[str(user_id)]
-                save_data("access.json", USER_ACCESS)
             return jsonify({'success': True, 'message': 'Доступ удален'})
         
         elif action == 'add_whitelist':
             wl = get_g_list(WHITELIST_IDS, guild_id)
             if int(user_id) not in wl:
                 wl.append(int(user_id))
-                save_data("whitelist.json", WHITELIST_IDS)
             return jsonify({'success': True, 'message': 'Добавлен в вайтлист'})
         
         elif action == 'remove_whitelist':
             wl = get_g_list(WHITELIST_IDS, guild_id)
             if int(user_id) in wl:
                 wl.remove(int(user_id))
-                save_data("whitelist.json", WHITELIST_IDS)
             return jsonify({'success': True, 'message': 'Удален из вайтлиста'})
         
         elif action == 'add_blacklist':
             bl = get_g_list(BLACKLIST_IDS, guild_id)
             if int(user_id) not in bl:
                 bl.append(int(user_id))
-                save_data("blacklist.json", BLACKLIST_IDS)
             return jsonify({'success': True, 'message': 'Добавлен в ЧС'})
         
         elif action == 'remove_blacklist':
             bl = get_g_list(BLACKLIST_IDS, guild_id)
             if int(user_id) in bl:
                 bl.remove(int(user_id))
-                save_data("blacklist.json", BLACKLIST_IDS)
             return jsonify({'success': True, 'message': 'Удален из ЧС'})
         
         elif action == 'add_protected':
             prot = get_g_list(PROTECTED_USERS, guild_id)
             if int(user_id) not in prot:
                 prot.append(int(user_id))
-                save_data("protected.json", PROTECTED_USERS)
             return jsonify({'success': True, 'message': 'Добавлен в проту'})
         
         elif action == 'remove_protected':
             prot = get_g_list(PROTECTED_USERS, guild_id)
             if int(user_id) in prot:
                 prot.remove(int(user_id))
-                save_data("protected.json", PROTECTED_USERS)
             return jsonify({'success': True, 'message': 'Удален из проты'})
         
         elif action == 'ban':
@@ -1586,11 +1689,9 @@ def api_action():
             if ban_type == 'apusy':
                 g_bans = get_g_dict(A_TEMP_BANS, guild_id)
                 g_bans[str(user_id)] = end_str
-                save_data("atempbans.json", A_TEMP_BANS)
             else:
                 g_bans = get_g_dict(TEMP_BANS, guild_id)
                 g_bans[str(user_id)] = end_str
-                save_data("tempbans.json", TEMP_BANS)
             
             return jsonify({'success': True, 'message': f'Бан выдан до {end_str}'})
         
@@ -1600,10 +1701,8 @@ def api_action():
             
             if str(user_id) in g_bans:
                 del g_bans[str(user_id)]
-                save_data("tempbans.json", TEMP_BANS)
             if str(user_id) in g_abans:
                 del g_abans[str(user_id)]
-                save_data("atempbans.json", A_TEMP_BANS)
             
             asyncio.run_coroutine_threadsafe(
                 guild.unban(discord.Object(id=int(user_id)), reason="Веб-панель: разбан"),
@@ -1657,7 +1756,6 @@ def api_set_autorole(guild_id):
         elif not enabled:
             auto_roles['role_id'] = None
         
-        save_data("auto_roles.json", AUTO_ROLES)
         
         return jsonify({'success': True, 'message': 'Настройки автороли обновлены'})
     except Exception as e:

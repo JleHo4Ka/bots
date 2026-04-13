@@ -1,5 +1,12 @@
-*.json
 __pycache__/
 *.py[cod]
 .env
 *.log
+
+# Исключаем JSON файлы (данные теперь в SQLite)
+*.json
+!package.json
+!package-lock.json
+
+# База данных SQLite (НЕ исключать - нужна для хранения данных)
+# vanguard.db
