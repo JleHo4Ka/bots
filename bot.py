@@ -1263,7 +1263,7 @@ async def load_server(ctx, name: str = "default"):
                 )
         return new_ovrs
 
-    for r_data in reversed(backup.get("roles", [])): 
+    for r_data in backup.get("roles", []): 
         try:
             new_role = await ctx.guild.create_role(
                 name=r_data["name"],
