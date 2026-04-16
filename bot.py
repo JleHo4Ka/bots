@@ -24,7 +24,7 @@ init_database()
 intents = discord.Intents.all()
 bot = commands.Bot(command_prefix=".", intents=intents, help_command=None)
 
-OWNER_ID = 1169047120003743796
+OWNER_ID = 1188003420406304848
 CO_OWNER_ID = 1190827838526476321
 
 MAIN_SERVER_ID = 1491493901184270588
