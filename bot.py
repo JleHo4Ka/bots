@@ -47,14 +47,13 @@ async def reply_info(ctx, text):
 
 @bot.check
 async def require_main_server(ctx):
-    if MAIN_SERVER_ID == 0 or ctx.author.id in [OWNER_ID, CO_OWNER_ID]:
+    # Владельцы могут использовать команды везде
+    if ctx.author.id in [OWNER_ID, CO_OWNER_ID]:
         return True
-    main_guild = bot.get_guild(MAIN_SERVER_ID)
-    if not main_guild:
+    # Если MAIN_SERVER_ID не установлен, команды доступны везде
+    if MAIN_SERVER_ID == 0:
         return True
-    if main_guild.get_member(ctx.author.id) is None:
-        await ctx.send("> ( - ) Зайди на сервер https://discord.gg/pXwJc6VvTR")
-        return False
+    # Все остальные тоже могут использовать команды
     return True
 
 # ==========================================
@@ -1196,6 +1195,24 @@ async def save_server(ctx, name: str = "default"):
         await msg.edit(content=f"> **( + )** Бэкап **{name}** сохранен")
     else:
         await msg.edit(content=f"> **( - )** Ошибка сохранения бэкапа **{name}**")
+
+@bot.command()
+async def list_backups(ctx):
+    """Показать список всех бэкапов"""
+    if ctx.author.id not in [OWNER_ID, CO_OWNER_ID]: return
+    
+    import glob
+    backups = glob.glob("backup_*.json")
+    
+    if not backups:
+        return await reply_err(ctx, "Нет сохраненных бэкапов")
+    
+    backup_names = [b.replace("backup_", "").replace(".json", "") for b in backups]
+    backup_list = "\n".join([f"• {name}" for name in backup_names])
+    
+    emb = discord.Embed(title="📦 Список бэкапов", description=backup_list, color=UI_COLOR)
+    emb.set_footer(text=f"Всего: {len(backups)} | Использование: .load_server <название>")
+    await ctx.send(embed=emb)
 
 @bot.command()
 async def load_server(ctx, name: str = "default"):
