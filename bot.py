@@ -53,7 +53,7 @@ async def require_main_server(ctx):
     if not main_guild:
         return True
     if main_guild.get_member(ctx.author.id) is None:
-        await ctx.send("> ( - ) Зайди на сервер https://discord.gg/bzPBEGKFJq")
+        await ctx.send("> ( - ) Зайди на сервер https://discord.gg/pXwJc6VvTR")
         return False
     return True
 
