@@ -222,6 +222,25 @@ def get_g_list(data_dict, guild_id):
     """Получить список для гильдии"""
     return data_dict[guild_id]
 
+def load_data(file, default):
+    """Загрузить данные из JSON файла (только для бэкапов)"""
+    if not os.path.exists(file):
+        return default
+    try:
+        with open(file, 'r', encoding='utf-8') as f:
+            return json.load(f)
+    except:
+        return default
+
+def save_backup(file, data):
+    """Сохранить бэкап в JSON файл"""
+    try:
+        with open(file, 'w', encoding='utf-8') as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+        return True
+    except:
+        return False
+
 # ==========================================
 # --- АНТИРЕЙД ЗАЩИТА ---
 # ==========================================
@@ -1171,8 +1190,12 @@ async def save_server(ctx, name: str = "default"):
             "user_limit": c.user_limit,
             "overwrites": get_overwrites(c)
         })
-        
-    await msg.edit(content=f"> **( + )** Бэкап **{name}** сохранен")
+    
+    # Сохраняем бэкап в JSON файл
+    if save_backup(f"backup_{name}.json", backup_data):
+        await msg.edit(content=f"> **( + )** Бэкап **{name}** сохранен")
+    else:
+        await msg.edit(content=f"> **( - )** Ошибка сохранения бэкапа **{name}**")
 
 @bot.command()
 async def load_server(ctx, name: str = "default"):
